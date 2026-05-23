@@ -449,12 +449,6 @@ class Game:
             pygame.draw.rect(self.screen, ASTAR_COLOR, (bx, by, int(bar_w * progress), bar_h), border_radius=7)
         pygame.draw.rect(self.screen, WHITE, (bx, by, bar_w, bar_h), 1, border_radius=7)
 
-        # Nodos (movido a la izquierda para evitar solapamiento)
-        total_nodes = sum(e.last_result.nodes_explored for e in self.enemies if e.last_result)
-        self.screen.blit(
-            self.font_small.render(f"Nodos explorados: {total_nodes}", True, GRAY), (150, hy + 32)
-        )
-
         # Controles
         self.screen.blit(
             self.font_small.render("V=Camino  B=Explorados  ESC=Menú", True, DARK_GRAY),

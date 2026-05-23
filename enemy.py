@@ -150,11 +150,18 @@ class Enemy:
         if self.algorithm in ("dfs", "dijkstra"):
             # Distancia Manhattan al jugador
             dist = abs(self.row - player_pos[0]) + abs(self.col - player_pos[1])
+            
+            was_alerted = self.is_alerted
+            
             if dist <= VISION_RANGE:
                 self.is_alerted = True
                 self._update_pursuit(grid, player_pos, occupied)
             else:
                 self.is_alerted = False
+                # Si acaba de perder de vista al jugador, reiniciar exploración desde la posición actual
+                if was_alerted:
+                    self._init_explorer(grid)
+                    
                 self._update_blind(grid, occupied)
         else:
             self.is_alerted = True
