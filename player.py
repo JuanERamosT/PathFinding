@@ -16,6 +16,9 @@ class Player:
         self.row = row
         self.col = col
         self.move_timer = 0  # Tiempo restante antes del próximo movimiento
+        # Posición visual para movimiento suave
+        self.visual_row = float(row)
+        self.visual_col = float(col)
 
     def handle_input(self, keys, grid, dt):
         """
@@ -59,3 +62,10 @@ class Player:
     def get_pos(self):
         """Retorna la posición actual como tupla (row, col)."""
         return (self.row, self.col)
+
+    def update_visual(self, dt):
+        """Interpola la posición visual hacia la posición lógica."""
+        lerp_speed = 15.0  # Factor de suavizado por segundo
+        t = min(1.0, lerp_speed * dt / 1000.0)
+        self.visual_row += (self.row - self.visual_row) * t
+        self.visual_col += (self.col - self.visual_col) * t

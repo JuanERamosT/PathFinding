@@ -186,3 +186,100 @@ def astar(grid, start, goal):
     result.time_ms = _elapsed_ms(t0)
     result.nodes_explored = len(result.explored)
     return result
+
+
+# ============================================================
+# EXPLORADORES CIEGOS (paso a paso, sin goal)
+# ============================================================
+#
+# Usados por los enemigos en el juego.
+# NO saben dónde está el jugador.
+# En cada llamada a step() expanden UN nodo y retornan
+# la celda a la que el enemigo debe moverse.
+#
+# ============================================================
+
+class DFSExplorer:
+    """
+    Exploración DFS paso a paso, SIN goal conocido.
+    Usa una PILA (stack). El enemigo se mueve al nodo
+    que hace pop del stack en cada turno.
+    """
+
+    def __init__(self, grid, start):
+        self.grid = grid
+        self.stack = [start]
+        self.visited = {start}
+        self.explored = []        # historial para visualización
+        self.finished = False
+
+    def step(self):
+        """
+        Expande un nodo del stack y retorna la celda.
+        Retorna None si ya no hay nodos por explorar.
+        """
+        if not self.stack:
+            self.finished = True
+            return None
+
+        current = self.stack.pop()
+        self.explored.append(current)
+
+        for neighbor in self.grid.get_neighbors(*current):
+            if neighbor not in self.visited:
+                self.visited.add(neighbor)
+                self.stack.append(neighbor)
+
+        return current
+
+    def reset(self, start):
+        """Reinicia la exploración desde una nueva posición."""
+        self.stack = [start]
+        self.visited = {start}
+        self.explored = []
+        self.finished = False
+
+
+class DijkstraExplorer:
+    """
+    Exploración Dijkstra paso a paso, SIN goal conocido.
+    Usa un MIN-HEAP (cola de prioridad). El enemigo se mueve
+    al nodo de menor costo acumulado en cada turno.
+    """
+
+    def __init__(self, grid, start):
+        self.grid = grid
+        self.heap = [(0, start)]
+        self.visited = set()
+        self.explored = []        # historial para visualización
+        self.finished = False
+
+    def step(self):
+        """
+        Expande el nodo de menor costo del heap y retorna la celda.
+        Retorna None si ya no hay nodos por explorar.
+        """
+        while self.heap:
+            cost, current = heapq.heappop(self.heap)
+
+            if current in self.visited:
+                continue
+
+            self.visited.add(current)
+            self.explored.append(current)
+
+            for neighbor in self.grid.get_neighbors(*current):
+                if neighbor not in self.visited:
+                    heapq.heappush(self.heap, (cost + 1, neighbor))
+
+            return current
+
+        self.finished = True
+        return None
+
+    def reset(self, start):
+        """Reinicia la exploración desde una nueva posición."""
+        self.heap = [(0, start)]
+        self.visited = set()
+        self.explored = []
+        self.finished = False

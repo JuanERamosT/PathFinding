@@ -2,24 +2,31 @@
 # enemy.py — Enemigo con inteligencia evolutiva
 # ============================================================
 #
-# El enemigo sigue un camino calculado paso a paso.
-# Recalcula cada N pasos para adaptarse al jugador.
+# COMPORTAMIENTO POR ALGORITMO:
 #
-# DFS:      cada 10 pasos → sigue caminos largos un rato
-# Dijkstra: cada 3 pasos  → se adapta moderadamente
-# A*:       cada 2 pasos  → siempre persiguiendo de cerca
+#   DFS:      Exploración CIEGA con stack.
+#             No sabe dónde está el jugador.
+#             Se mueve nodo por nodo siguiendo la pila.
+#
+#   Dijkstra: Exploración CIEGA con min-heap.
+#             No sabe dónde está el jugador.
+#             Expande el nodo de menor costo acumulado.
+#
+#   A*:       Persecución INFORMADA con heurística.
+#             SÍ sabe dónde está el jugador.
+#             Calcula y sigue el camino óptimo.
 #
 # ============================================================
 
 from constants import (
-    ENEMY_SPEEDS, RECALC_STEPS,
+    ENEMY_SPEEDS, ASTAR_RECALC_STEPS,
     DFS_COLOR, DIJKSTRA_COLOR, ASTAR_COLOR
 )
-from pathfinding import dfs, dijkstra, astar
+from pathfinding import astar, DFSExplorer, DijkstraExplorer
 
 
 class Enemy:
-    """Enemigo que persigue al jugador."""
+    """Enemigo que busca al jugador."""
 
     def __init__(self, row, col, algorithm="dfs"):
         self.row = row
@@ -27,7 +34,14 @@ class Enemy:
         self.algorithm = algorithm
         self.move_timer = 0
 
-        # Camino actual
+        # Posición visual para movimiento suave
+        self.visual_row = float(row)
+        self.visual_col = float(col)
+
+        # Explorador ciego (DFS / Dijkstra)
+        self.explorer = None
+
+        # Camino calculado (solo A*)
         self.path = []
         self.path_index = 0
         self.steps_taken = 0
@@ -38,6 +52,7 @@ class Enemy:
 
     def set_algorithm(self, algorithm):
         self.algorithm = algorithm
+        self.explorer = None
         self.path = []
         self.path_index = 0
         self.steps_taken = 0
@@ -53,30 +68,73 @@ class Enemy:
         names = {"dfs": "DFS", "dijkstra": "Dijkstra", "astar": "A*"}
         return names.get(self.algorithm, "???")
 
-    def _needs_recalculate(self):
+    # ---- Inicialización del explorador ciego ----
+
+    def _init_explorer(self, grid):
+        """Crea un explorador nuevo desde la posición actual."""
+        start = (self.row, self.col)
+        if self.algorithm == "dfs":
+            self.explorer = DFSExplorer(grid, start)
+        elif self.algorithm == "dijkstra":
+            self.explorer = DijkstraExplorer(grid, start)
+
+    # ---- A*: persecución informada ----
+
+    def _needs_recalculate_astar(self):
         if not self.path:
             return True
         if self.path_index >= len(self.path) - 1:
             return True
-        max_steps = RECALC_STEPS.get(self.algorithm, 5)
-        if self.steps_taken >= max_steps:
+        if self.steps_taken >= ASTAR_RECALC_STEPS:
             return True
         return False
 
-    def update(self, grid, player_pos, dt):
+    # ---- Actualización principal ----
+
+    def update(self, grid, player_pos, dt, occupied=None):
+        """
+        Mueve al enemigo un paso.
+        - DFS/Dijkstra: exploración ciega (no conocen player_pos).
+        - A*: persecución informada hacia player_pos.
+        - occupied: set de celdas ocupadas por otros enemigos.
+        """
         self.move_timer -= dt
         if self.move_timer > 0:
             return
 
-        # ¿Recalcular?
-        if self._needs_recalculate():
+        if occupied is None:
+            occupied = set()
+
+        if self.algorithm in ("dfs", "dijkstra"):
+            self._update_blind(grid, occupied)
+        else:
+            self._update_astar(grid, player_pos, occupied)
+
+        self.move_timer = self.get_move_delay()
+
+    def _update_blind(self, grid, occupied):
+        """Exploración ciega paso a paso (DFS o Dijkstra)."""
+        # Crear explorador si no existe o terminó
+        if self.explorer is None or self.explorer.finished:
+            self._init_explorer(grid)
+
+        next_cell = self.explorer.step()
+
+        if next_cell is not None:
+            # Anti-superposición: solo moverse si la celda está libre
+            if next_cell not in occupied:
+                self.row, self.col = next_cell
+            # Actualizar historial de exploración para visualización
+            self.explored = list(self.explorer.explored)
+        else:
+            # Se agotó la exploración → reiniciar desde posición actual
+            self._init_explorer(grid)
+
+    def _update_astar(self, grid, player_pos, occupied):
+        """Persecución informada con A* (SÍ conoce player_pos)."""
+        if self._needs_recalculate_astar():
             start = (self.row, self.col)
-            if self.algorithm == "dfs":
-                result = dfs(grid, start, player_pos)
-            elif self.algorithm == "dijkstra":
-                result = dijkstra(grid, start, player_pos)
-            else:
-                result = astar(grid, start, player_pos)
+            result = astar(grid, start, player_pos)
 
             self.last_result = result
             self.path = result.path
@@ -84,14 +142,25 @@ class Enemy:
             self.path_index = 0
             self.steps_taken = 0
 
-        # Avanzar un paso
+        # Avanzar un paso por el camino
         if self.path and self.path_index < len(self.path) - 1:
-            self.path_index += 1
-            self.row = self.path[self.path_index][0]
-            self.col = self.path[self.path_index][1]
+            next_index = self.path_index + 1
+            next_cell = self.path[next_index]
+
+            # Anti-superposición
+            if next_cell not in occupied:
+                self.path_index = next_index
+                self.row = next_cell[0]
+                self.col = next_cell[1]
 
         self.steps_taken += 1
-        self.move_timer = self.get_move_delay()
 
     def get_pos(self):
         return (self.row, self.col)
+
+    def update_visual(self, dt):
+        """Interpola la posición visual hacia la posición lógica."""
+        lerp_speed = 15.0
+        t = min(1.0, lerp_speed * dt / 1000.0)
+        self.visual_row += (self.row - self.visual_row) * t
+        self.visual_col += (self.col - self.visual_col) * t

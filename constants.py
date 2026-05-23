@@ -34,15 +34,10 @@ ENEMY_SPEEDS = {
     "astar":    150,
 }
 
-# --- Recalculación del camino ---
-# DFS = 9999 → sigue TODO el camino antes de recalcular
-#   (esto evita que vaya y vuelva en loop)
-# Dijkstra/A* = recalculan seguido para adaptarse al jugador
-RECALC_STEPS = {
-    "dfs":      9999,
-    "dijkstra": 3,
-    "astar":    2,
-}
+# --- Recalculación del camino (solo A*) ---
+# A* recalcula cada pocos pasos para adaptarse al jugador.
+# DFS y Dijkstra ya NO usan recalculación: exploran paso a paso.
+ASTAR_RECALC_STEPS = 2
 
 # --- Tiempo de supervivencia (segundos) ---
 SURVIVAL_TIME = 60
@@ -59,9 +54,4 @@ STATE_GAME_OVER = "game_over"
 STATE_WIN      = "win"
 STATE_ANALYSIS = "analysis"
 
-# --- Tamaños de mapa ---
-MAP_SIZES = {
-    "small":  (15, 10),
-    "medium": (20, 15),
-    "large":  (30, 20),
-}
+

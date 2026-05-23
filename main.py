@@ -4,7 +4,7 @@
 
 import pygame
 import sys
-from constants import *
+from constants import *  # noqa: F401, F403
 from grid import Grid
 from player import Player
 from enemy import Enemy
@@ -137,13 +137,6 @@ class Game:
                 self.editor_tool = "player"
             elif event.key == pygame.K_o:
                 self.editor_tool = "enemy"
-            # Tamaños de mapa
-            elif event.key == pygame.K_F5:
-                self._resize_map(*MAP_SIZES["small"])
-            elif event.key == pygame.K_F6:
-                self._resize_map(*MAP_SIZES["medium"])
-            elif event.key == pygame.K_F7:
-                self._resize_map(*MAP_SIZES["large"])
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
@@ -258,11 +251,15 @@ class Game:
 
         keys = pygame.key.get_pressed()
         self.player.handle_input(keys, self.grid, dt)
+        self.player.update_visual(dt)
 
         player_pos = self.player.get_pos()
 
-        for enemy in self.enemies:
-            enemy.update(self.grid, player_pos, dt)
+        for i, enemy in enumerate(self.enemies):
+            # Anti-superposición: celdas ocupadas por los otros enemigos
+            occupied = {e.get_pos() for j, e in enumerate(self.enemies) if j != i}
+            enemy.update(self.grid, player_pos, dt, occupied)
+            enemy.update_visual(dt)
             if enemy.get_pos() == player_pos:
                 self.state = STATE_GAME_OVER
                 return
@@ -306,13 +303,18 @@ class Game:
                 pygame.draw.rect(self.screen, color, rect)
                 pygame.draw.rect(self.screen, GRID_LINE, rect, 1)
 
-    def _draw_cell(self, row, col, color, ox=0, oy=0, scale=1.0, shrink=4):
+    def _draw_cell(self, row, col, color, ox=0, oy=0, scale=1.0, shrink=4, text=None):
         cell = int(CELL_SIZE * scale)
         x = ox + col * cell + shrink
         y = oy + row * cell + shrink
         size = cell - shrink * 2
         if size > 0:
             pygame.draw.rect(self.screen, color, (x, y, size, size))
+            if text:
+                t_surf = self.font_med.render(text, True, BLACK)
+                tx = x + size / 2 - t_surf.get_width() / 2
+                ty = y + size / 2 - t_surf.get_height() / 2
+                self.screen.blit(t_surf, (tx, ty))
 
     def _draw_overlay(self, cells, color_rgba, ox=0, oy=0, scale=1.0):
         cell = int(CELL_SIZE * scale)
@@ -337,9 +339,9 @@ class Game:
             ("3 - A* (A-Star)", ASTAR_COLOR),
         ]
         descs = [
-            "Impulsivo: caminos largos y erráticos",
-            "Lógico: siempre el camino más corto",
-            "Inteligente: óptimo con menos exploración",
+            "Ciego: explora sin saber dónde estás",
+            "Ciego: expande por costo mínimo sin rumbo",
+            "Inteligente: te persigue con heurística",
         ]
 
         y = 170
@@ -388,14 +390,11 @@ class Game:
         line1 = "W=Muro  P=Jugador  O=Enemigo(+/-)  C=Limpiar  1/2/3=Mapas"
         self.screen.blit(self.font_small.render(line1, True, GRAY), (10, hy + 24))
 
-        line2 = "F5=Pequeño  F6=Mediano  F7=Grande  Click der=Borrar  ESC=Menú"
+        line2 = "Click der=Borrar  ESC/ENTER=Menú"
         self.screen.blit(self.font_small.render(line2, True, GRAY), (10, hy + 43))
 
         self.screen.blit(self.font_small.render("■ Jugador", True, PLAYER_COLOR), (10, hy + 62))
         self.screen.blit(self.font_small.render("■ Enemigo", True, DFS_COLOR), (120, hy + 62))
-
-        size_text = f"Mapa: {self.grid.cols}x{self.grid.rows}"
-        self.screen.blit(self.font_small.render(size_text, True, DARK_GRAY), (self._win_w() - 130, hy + 62))
 
     # ---- Juego ----
 
@@ -410,12 +409,12 @@ class Game:
             if self.show_path and enemy.path:
                 self._draw_overlay(enemy.path, (color[0], color[1], color[2], 80))
 
-        # Jugador
-        self._draw_cell(self.player.row, self.player.col, PLAYER_COLOR)
+        # Jugador (movimiento suave y con exclamación "!")
+        self._draw_cell(self.player.visual_row, self.player.visual_col, PLAYER_COLOR, text="!")
 
-        # Enemigos
+        # Enemigos (movimiento suave)
         for enemy in self.enemies:
-            self._draw_cell(enemy.row, enemy.col, enemy.get_color())
+            self._draw_cell(enemy.visual_row, enemy.visual_col, enemy.get_color())
 
         # HUD
         hy = self.grid.rows * CELL_SIZE
@@ -437,6 +436,16 @@ class Game:
             self.font_med.render(f"Tiempo: {self.timer:.1f}s", True, timer_color),
             (self._win_w() // 2 - 50, hy + 5)
         )
+
+        # Barra de tiempo
+        bar_w = 200
+        bar_h = 15
+        bx = self._win_w() // 2 - bar_w // 2
+        by = hy + 35
+        pygame.draw.rect(self.screen, DARK_GRAY, (bx, by, bar_w, bar_h))
+        progress = max(0, min(1, (SURVIVAL_TIME - self.timer) / SURVIVAL_TIME))
+        pygame.draw.rect(self.screen, ASTAR_COLOR, (bx, by, bar_w * progress, bar_h))
+        pygame.draw.rect(self.screen, WHITE, (bx, by, bar_w, bar_h), 1)
 
         # Nodos
         total_nodes = sum(e.last_result.nodes_explored for e in self.enemies if e.last_result)
@@ -596,8 +605,9 @@ class Game:
 
     def _start_analysis(self):
         """Calcula los 3 algoritmos y prepara la animación."""
-        start = self.grid.player_start
-        goal = self.grid.enemy_starts[0] if self.grid.enemy_starts else (self.grid.rows - 2, self.grid.cols - 2)
+        # El enemigo es quien busca → parte desde su posición
+        start = self.grid.enemy_starts[0] if self.grid.enemy_starts else (self.grid.rows - 2, self.grid.cols - 2)
+        goal = self.grid.player_start
 
         self.analysis_results = [
             ("DFS", dfs(self.grid, start, goal), DFS_COLOR),
