@@ -409,12 +409,13 @@ class Game:
             if self.show_path and enemy.path:
                 self._draw_overlay(enemy.path, (color[0], color[1], color[2], 80))
 
-        # Jugador (movimiento suave y con exclamación "!")
-        self._draw_cell(self.player.visual_row, self.player.visual_col, PLAYER_COLOR, text="!")
+        # Jugador (movimiento suave, SIN exclamación)
+        self._draw_cell(self.player.visual_row, self.player.visual_col, PLAYER_COLOR)
 
-        # Enemigos (movimiento suave)
+        # Enemigos (movimiento suave, CON exclamación si persiguen)
         for enemy in self.enemies:
-            self._draw_cell(enemy.visual_row, enemy.visual_col, enemy.get_color())
+            exclamacion = "!" if getattr(enemy, 'is_alerted', False) else None
+            self._draw_cell(enemy.visual_row, enemy.visual_col, enemy.get_color(), text=exclamacion)
 
         # HUD
         hy = self.grid.rows * CELL_SIZE
@@ -437,20 +438,21 @@ class Game:
             (self._win_w() // 2 - 50, hy + 5)
         )
 
-        # Barra de tiempo
+        # Barra de tiempo (con bordes redondeados)
         bar_w = 200
         bar_h = 15
         bx = self._win_w() // 2 - bar_w // 2
         by = hy + 35
-        pygame.draw.rect(self.screen, DARK_GRAY, (bx, by, bar_w, bar_h))
+        pygame.draw.rect(self.screen, DARK_GRAY, (bx, by, bar_w, bar_h), border_radius=7)
         progress = max(0, min(1, (SURVIVAL_TIME - self.timer) / SURVIVAL_TIME))
-        pygame.draw.rect(self.screen, ASTAR_COLOR, (bx, by, bar_w * progress, bar_h))
-        pygame.draw.rect(self.screen, WHITE, (bx, by, bar_w, bar_h), 1)
+        if progress > 0:
+            pygame.draw.rect(self.screen, ASTAR_COLOR, (bx, by, int(bar_w * progress), bar_h), border_radius=7)
+        pygame.draw.rect(self.screen, WHITE, (bx, by, bar_w, bar_h), 1, border_radius=7)
 
-        # Nodos
+        # Nodos (movido a la izquierda para evitar solapamiento)
         total_nodes = sum(e.last_result.nodes_explored for e in self.enemies if e.last_result)
         self.screen.blit(
-            self.font_small.render(f"Nodos explorados: {total_nodes}", True, GRAY), (250, hy + 32)
+            self.font_small.render(f"Nodos explorados: {total_nodes}", True, GRAY), (150, hy + 32)
         )
 
         # Controles

@@ -19,10 +19,10 @@ GRAY       = (150, 150, 150)
 DARK_GRAY  = (80, 80, 80)
 OBSTACLE_COLOR = (70, 70, 100)
 
-PLAYER_COLOR   = (255, 215, 0)
-DFS_COLOR      = (255, 71, 87)
-DIJKSTRA_COLOR = (55, 66, 250)
-ASTAR_COLOR    = (46, 213, 115)
+PLAYER_COLOR   = (55, 66, 250)    # Azul (héroe)
+DFS_COLOR      = (255, 71, 87)    # Rojo
+DIJKSTRA_COLOR = (255, 71, 87)    # Rojo
+ASTAR_COLOR    = (255, 71, 87)    # Rojo
 
 # --- Velocidades (milisegundos entre movimientos) ---
 FPS = 60
@@ -34,10 +34,12 @@ ENEMY_SPEEDS = {
     "astar":    150,
 }
 
-# --- Recalculación del camino (solo A*) ---
-# A* recalcula cada pocos pasos para adaptarse al jugador.
-# DFS y Dijkstra ya NO usan recalculación: exploran paso a paso.
+# --- Recalculación del camino (Persecución) ---
+# A* siempre persigue. DFS/Dijkstra persiguen cuando el jugador
+# entra en el rango de visión.
 ASTAR_RECALC_STEPS = 2
+BLIND_RECALC_STEPS = 3
+VISION_RANGE = 5
 
 # --- Tiempo de supervivencia (segundos) ---
 SURVIVAL_TIME = 60

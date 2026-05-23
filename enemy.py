@@ -19,10 +19,10 @@
 # ============================================================
 
 from constants import (
-    ENEMY_SPEEDS, ASTAR_RECALC_STEPS,
+    ENEMY_SPEEDS, ASTAR_RECALC_STEPS, BLIND_RECALC_STEPS, VISION_RANGE,
     DFS_COLOR, DIJKSTRA_COLOR, ASTAR_COLOR
 )
-from pathfinding import astar, DFSExplorer, DijkstraExplorer
+from pathfinding import dfs, dijkstra, astar, DFSExplorer, DijkstraExplorer
 
 
 class Enemy:
@@ -41,10 +41,13 @@ class Enemy:
         # Explorador ciego (DFS / Dijkstra)
         self.explorer = None
 
-        # Camino calculado (solo A*)
+        # Camino calculado (solo A* o persecución alertada)
         self.path = []
         self.path_index = 0
         self.steps_taken = 0
+
+        # Agro (Rango de visión)
+        self.is_alerted = False
 
         # Para visualización
         self.explored = []
@@ -56,6 +59,7 @@ class Enemy:
         self.path = []
         self.path_index = 0
         self.steps_taken = 0
+        self.is_alerted = False
 
     def get_color(self):
         colors = {"dfs": DFS_COLOR, "dijkstra": DIJKSTRA_COLOR, "astar": ASTAR_COLOR}
@@ -89,14 +93,52 @@ class Enemy:
             return True
         return False
 
+    # ---- Persecución alertada (DFS/Dijkstra) ----
+
+    def _needs_recalculate_blind(self):
+        if not self.path:
+            return True
+        if self.path_index >= len(self.path) - 1:
+            return True
+        if self.steps_taken >= BLIND_RECALC_STEPS:
+            return True
+        return False
+
+    def _update_pursuit(self, grid, player_pos, occupied):
+        """Persecución cuando el jugador entra en el rango de visión de DFS/Dijkstra."""
+        if self._needs_recalculate_blind():
+            start = (self.row, self.col)
+            if self.algorithm == "dfs":
+                result = dfs(grid, start, player_pos)
+            else:
+                result = dijkstra(grid, start, player_pos)
+
+            self.last_result = result
+            self.path = result.path
+            self.explored = result.explored
+            self.path_index = 0
+            self.steps_taken = 0
+
+        # Avanzar un paso por el camino
+        if self.path and self.path_index < len(self.path) - 1:
+            next_index = self.path_index + 1
+            next_cell = self.path[next_index]
+
+            # Anti-superposición
+            if next_cell not in occupied:
+                self.path_index = next_index
+                self.row = next_cell[0]
+                self.col = next_cell[1]
+
+        self.steps_taken += 1
+
     # ---- Actualización principal ----
 
     def update(self, grid, player_pos, dt, occupied=None):
         """
         Mueve al enemigo un paso.
-        - DFS/Dijkstra: exploración ciega (no conocen player_pos).
-        - A*: persecución informada hacia player_pos.
-        - occupied: set de celdas ocupadas por otros enemigos.
+        - DFS/Dijkstra: ciegos de lejos, persiguen de cerca.
+        - A*: siempre persigue.
         """
         self.move_timer -= dt
         if self.move_timer > 0:
@@ -106,8 +148,16 @@ class Enemy:
             occupied = set()
 
         if self.algorithm in ("dfs", "dijkstra"):
-            self._update_blind(grid, occupied)
+            # Distancia Manhattan al jugador
+            dist = abs(self.row - player_pos[0]) + abs(self.col - player_pos[1])
+            if dist <= VISION_RANGE:
+                self.is_alerted = True
+                self._update_pursuit(grid, player_pos, occupied)
+            else:
+                self.is_alerted = False
+                self._update_blind(grid, occupied)
         else:
+            self.is_alerted = True
             self._update_astar(grid, player_pos, occupied)
 
         self.move_timer = self.get_move_delay()
